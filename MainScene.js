@@ -2,19 +2,16 @@ class MainScene extends Phaser.Scene {
   constructor() {
     super('MainScene');
 
-    // Для кошелька
     this.provider = null;
     this.signer = null;
     this.walletAddress = null;
 
-    // Адрес токена WPHRS
     this.tokenAddress = '0x3019B247381c850ab53Dc0EE53bCe7A07Ea9155f';
     this.erc20Abi = [
       "function balanceOf(address) view returns (uint)",
       "function transfer(address to, uint amount) returns (bool)"
     ];
 
-    // Депозитный адрес для ставок
     this.depositAddress = '0x6EC8C121043357aC231E36D403EdAbf90AE6989B';
   }
 
@@ -296,78 +293,4 @@ class MainScene extends Phaser.Scene {
   spawnWave() {
     const width = this.scale.width;
     const height = this.scale.height;
-    const waveHeights = [150, 250, 350, 450, 550].map(h => h * (height / 600));
-    const waveY = waveHeights[Phaser.Math.Between(0, waveHeights.length - 1)];
-
-    let wave = this.beams.create(this.lighthouse.x - 250 * (width / 800), waveY, 'beam')
-      .setOrigin(0.05, 0.1)
-      .setScale(Phaser.Math.FloatBetween(0.05, 0.2) * Math.min(width / 800, height / 600));
-
-    wave.setVelocityX(-250 * (width / 800));
-    wave.body.setAllowGravity(false);
-
-    wave.setCollideWorldBounds(false);
-    wave.body.onWorldBounds = true;
-    wave.body.world.on('worldbounds', (body) => {
-      if (body.gameObject === wave) {
-        wave.destroy();
-      }
-    });
-  }
-
-  update() {
-    const speed = 200 * (this.scale.width / 800);
-    const player = this.player;
-
-    if (this.gameStarted) {
-      player.setVelocityX(0);
-
-      if (this.cursors.left.isDown || this.keys.left.isDown) {
-        player.setVelocityX(-speed);
-      } else if (this.cursors.right.isDown || this.keys.right.isDown) {
-        player.setVelocityX(speed);
-      }
-
-      if (Phaser.Input.Keyboard.JustDown(this.keys.space) && player.body.onFloor()) {
-        player.setVelocityY(-900 * (this.scale.height / 600));
-      }
-    } else {
-      if (Phaser.Input.Keyboard.JustDown(this.keys.space)) {
-        this.startCountdown();
-      }
-      player.setVelocityX(0);
-      player.setVelocityY(0);
-    }
-
-    this.beams.getChildren().forEach(wave => {
-      if (wave.x < -wave.displayWidth) {
-        wave.destroy();
-      }
-    });
-  }
-}
-
-const config = {
-  type: Phaser.AUTO,
-  parent: 'game',
-  scale: {
-    mode: Phaser.Scale.FIT,
-    autoCenter: Phaser.Scale.CENTER_BOTH,
-    width: window.innerWidth,
-    height: window.innerHeight
-  },
-  physics: {
-    default: 'arcade',
-    arcade: {
-      gravity: { y: 0 },
-      debug: false
-    }
-  },
-  scene: MainScene
-};
-
-const game = new Phaser.Game(config);
-
-window.addEventListener('resize', () => {
-  game.scale.resize(window.innerWidth, window.innerHeight);
-});
+    const waveHeights = [150, 250,...
