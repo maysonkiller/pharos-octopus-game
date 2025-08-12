@@ -1,10 +1,17 @@
-class MainScene extends Phaser.Scene {
+export default class MainScene extends Phaser.Scene {
   constructor() {
     super('MainScene');
 
     this.provider = null;
     this.signer = null;
     this.walletAddress = null;
+    this.jumpCount = 0; // Для двойного прыжка
+
+    this.tokenAddress = '0x3019B247381c850ab53Dc0EE53bCe7A07Ea9155f';
+    this.erc20Abi = [
+      "function balanceOf(address) view returns (uint)",
+      "function transfer(address to, uint amount) returns (bool)"
+    ];
 
     this.depositAddress = '0x6EC8C121043357aC231E36D403EdAbf90AE6989B';
   }
@@ -15,6 +22,7 @@ class MainScene extends Phaser.Scene {
     this.load.image('player', 'assets/sticker.webp');
     this.load.image('lighthouse', 'assets/lighthouse.png');
     this.load.image('beam', 'assets/beam.webp');
+    this.load.audio('waves', 'assets/waves.mp3'); // Звук волн
   }
 
   create() {
@@ -78,23 +86,6 @@ class MainScene extends Phaser.Scene {
       fill: '#ffff00' 
     });
 
-    this.startButton = this.add.text(10, height * 0.2, 'Start Game', { 
-      fontSize: Math.min(width, height) * 0.04 + 'px', 
-      fill: '#00ffff' 
-    })
-      .setInteractive()
-      .on('pointerdown', async () => {
-        if (!this.walletAddress) {
-          this.updateMessage('Please connect your wallet first.');
-          return;
-        }
-        const paid = await this.payStake();
-        if (paid) {
-          await this.updateBalance();
-          this.scene.restart();
-        }
-      });
-
     this.fullscreenButton = this.add.text(10, height * 0.3, 'Toggle Fullscreen', { 
       fontSize: Math.min(width, height) * 0.04 + 'px', 
       fill: '#ff00ff' 
@@ -111,7 +102,7 @@ class MainScene extends Phaser.Scene {
     this.gameStarted = false;
     this.countdownText = this.add.text(width / 2, height / 2, 'Press Space to Start', { 
       fontSize: Math.min(width, height) * 0.06 + 'px', 
-      fill: '#ffffff' 
+      fill: '#00FFFF' // Бирюзовый цвет
     }).setOrigin(0.5);
   }
 
@@ -132,8 +123,9 @@ class MainScene extends Phaser.Scene {
   startGame() {
     this.gameStarted = true;
     this.countdownText.destroy();
+    this.sound.play('waves', { loop: true, volume: 0.5 }); // Проигрываем звук волн
     this.time.addEvent({
-      delay: 1500, // Увеличен для снижения нагрузки
+      delay: 2000, // Увеличен для снижения нагрузки
       callback: this.spawnWave,
       callbackScope: this,
       loop: true
@@ -198,8 +190,8 @@ class MainScene extends Phaser.Scene {
               chainId: '0xa8230',
               chainName: 'Pharos Testnet',
               nativeCurrency: {
-                name: 'Pharos',
-                symbol: 'PHRS',
+                name: 'Wrapped PHRS',
+                symbol: 'WPHRS',
                 decimals: 18
               },
               rpcUrls: ['https://testnet.dplabs-internal.com'],
@@ -230,19 +222,17 @@ class MainScene extends Phaser.Scene {
     }
 
     try {
-      const balance = await this.provider.getBalance(this.walletAddress);
+      const tokenContract = new ethers.Contract(this.tokenAddress, this.erc20Abi, this.signer);
+      const balance = await tokenContract.balanceOf(this.walletAddress);
       console.log('Balance raw:', balance.toString());
 
       if (balance.lt(stakeAmount)) {
-        this.updateMessage('Insufficient PHRS balance for stake.');
+        this.updateMessage('Insufficient WPHRS balance for stake.');
         return false;
       }
 
       this.updateMessage('Sending stake payment...');
-      const tx = await this.signer.sendTransaction({
-        to: this.depositAddress,
-        value: stakeAmount
-      });
+      const tx = await tokenContract.transfer(this.depositAddress, stakeAmount);
       console.log('Transaction sent:', tx.hash);
       await tx.wait();
       this.updateMessage('Stake payment successful! Starting game...');
@@ -254,6 +244,36 @@ class MainScene extends Phaser.Scene {
     }
   }
 
+  async claimReward() {
+    const rewardAmount = ethers.utils.parseUnits('0.01', 18);
+
+    if (!this.signer) {
+      this.updateMessage('Please connect your wallet first');
+      return;
+    }
+
+    try {
+      const tokenContract = new ethers.Contract(this.tokenAddress, this.erc20Abi, this.signer);
+      const balance = await tokenContract.balanceOf(this.depositAddress);
+      console.log('Deposit address balance:', balance.toString());
+
+      if (balance.lt(rewardAmount)) {
+        this.updateMessage('Insufficient WPHRS on deposit address for reward.');
+        return;
+      }
+
+      this.updateMessage('Claiming 0.01 WPHRS...');
+      const tx = await tokenContract.transfer(this.walletAddress, rewardAmount);
+      console.log('Claim transaction sent:', tx.hash);
+      await tx.wait();
+      this.updateMessage('Reward claimed successfully!');
+      await this.updateBalance();
+    } catch (err) {
+      console.error('Claim reward failed:', err);
+      this.updateMessage('Claim failed: ' + (err.data?.message || err.message || err));
+    }
+  }
+
   async updateBalance() {
     if (!this.provider || !this.walletAddress) {
       this.balanceText.setText('Balance: -');
@@ -261,7 +281,107 @@ class MainScene extends Phaser.Scene {
     }
 
     try {
-      const balanceRaw = await this.provider.getBalance(this.walletAddress);
+      const tokenContract = new ethers.Contract(this.tokenAddress, this.erc20Abi, this.provider);
+      const balanceRaw = await tokenContract.balanceOf(this.walletAddress);
       console.log('Fetched raw balance:', balanceRaw.toString());
       const balance = ethers.utils.formatUnits(balanceRaw, 18);
-      this.balanceText.setText(`Balance: ${balance} PHRS...
+      this.balanceText.setText(`Balance: ${balance} WPHRS`);
+    } catch (error) {
+      console.error('Failed to fetch balance:', error);
+      this.balanceText.setText(`Balance: error - ${error.message}`);
+    }
+  }
+
+  updateMessage(text) {
+    this.messageText.setText(text || '');
+  }
+
+  handleWin() {
+    this.physics.pause();
+    this.time.removeAllEvents();
+    const width = this.scale.width;
+    const height = this.scale.height;
+
+    this.updateMessage('Congratulations! Claim your reward.');
+    this.claimButton = this.add.text(width / 2, height / 2, 'Claim 0.01 WPHRS', {
+      fontSize: Math.min(width, height) * 0.05 + 'px',
+      fill: '#00ff00'
+    })
+      .setOrigin(0.5)
+      .setInteractive()
+      .on('pointerdown', () => this.claimReward());
+  }
+
+  handleLose() {
+    this.updateMessage('You lost! Try again.');
+    this.scene.restart();
+  }
+
+  spawnWave() {
+    const width = this.scale.width;
+    const height = this.scale.height;
+    const waveHeights = [150, 250, 350, 450, 550].map(h => h * (height / 600));
+    const waveY = waveHeights[Phaser.Math.Between(0, waveHeights.length - 1)];
+
+    let wave = this.beams.create(this.lighthouse.x - 250 * (width / 800), waveY, 'beam')
+      .setOrigin(0.05, 0.1)
+      .setScale(Phaser.Math.FloatBetween(0.05, 0.2) * Math.min(width / 800, height / 600));
+
+    wave.setVelocityX(-250 * (width / 800));
+    wave.body.setAllowGravity(false);
+
+    wave.setCollideWorldBounds(false);
+    wave.body.onWorldBounds = true;
+    wave.body.world.on('worldbounds', (body) => {
+      if (body.gameObject === wave) {
+        wave.destroy();
+      }
+    });
+  }
+
+  update() {
+    const speed = 200 * (this.scale.width / 800);
+    const player = this.player;
+
+    if (this.gameStarted) {
+      player.setVelocityX(0);
+
+      if (this.cursors.left.isDown || this.keys.left.isDown) {
+        player.setVelocityX(-speed);
+      } else if (this.cursors.right.isDown || this.keys.right.isDown) {
+        player.setVelocityX(speed);
+      }
+
+      if (Phaser.Input.Keyboard.JustDown(this.keys.space) && this.jumpCount < 2) {
+        player.setVelocityY(-900 * (this.scale.height / 600));
+        this.jumpCount++;
+      }
+
+      if (player.body.onFloor()) {
+        this.jumpCount = 0;
+      }
+    } else {
+      if (Phaser.Input.Keyboard.JustDown(this.keys.space)) {
+        if (!this.walletAddress) {
+          this.updateMessage('Please connect your wallet first.');
+          return;
+        }
+        this.payStake().then((paid) => {
+          if (paid) {
+            this.updateBalance().then(() => {
+              this.startCountdown();
+            });
+          }
+        });
+      }
+      player.setVelocityX(0);
+      player.setVelocityY(0);
+    }
+
+    this.beams.getChildren().forEach(wave => {
+      if (wave.x < -wave.displayWidth) {
+        wave.destroy();
+      }
+    });
+  }
+}
