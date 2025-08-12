@@ -6,12 +6,6 @@ class MainScene extends Phaser.Scene {
     this.signer = null;
     this.walletAddress = null;
 
-    this.tokenAddress = '0x3019B247381c850ab53Dc0EE53bCe7A07Ea9155f';
-    this.erc20Abi = [
-      "function balanceOf(address) view returns (uint)",
-      "function transfer(address to, uint amount) returns (bool)"
-    ];
-
     this.depositAddress = '0x6EC8C121043357aC231E36D403EdAbf90AE6989B';
   }
 
@@ -139,7 +133,7 @@ class MainScene extends Phaser.Scene {
     this.gameStarted = true;
     this.countdownText.destroy();
     this.time.addEvent({
-      delay: 1000,
+      delay: 1500, // Увеличен для снижения нагрузки
       callback: this.spawnWave,
       callbackScope: this,
       loop: true
@@ -147,8 +141,8 @@ class MainScene extends Phaser.Scene {
   }
 
   async connectWallet() {
-    if (!window.ethereum) {
-      alert('Please install MetaMask or another Ethereum wallet.');
+    if (!window.ethereum || !window.ethereum.isMetaMask) {
+      alert('Please install MetaMask and disable other wallet extensions (e.g., Phantom).');
       return;
     }
 
@@ -184,7 +178,7 @@ class MainScene extends Phaser.Scene {
 
     } catch (error) {
       console.error('Wallet connection or network switch error:', error);
-      this.updateMessage('Wallet connection or network switch failed.');
+      this.updateMessage('Wallet connection or network switch failed: ' + error.message);
     }
   }
 
@@ -204,8 +198,8 @@ class MainScene extends Phaser.Scene {
               chainId: '0xa8230',
               chainName: 'Pharos Testnet',
               nativeCurrency: {
-                name: 'Wrapped PHRS',
-                symbol: 'WPHRS',
+                name: 'Pharos',
+                symbol: 'PHRS',
                 decimals: 18
               },
               rpcUrls: ['https://testnet.dplabs-internal.com'],
@@ -217,11 +211,12 @@ class MainScene extends Phaser.Scene {
             params: [{ chainId: '0xa8230' }]
           });
         } catch (addError) {
-          console.error('Failed to add Pharos Testnet', addError);
-          throw addError;
+          console.error('Failed to add Pharos Testnet:', addError);
+          this.updateMessage('Failed to add Pharos Testnet.');
         }
       } else {
-        throw error;
+        console.error('Switch to Pharos failed:', error);
+        this.updateMessage('Failed to switch to Pharos Network.');
       }
     }
   }
@@ -235,17 +230,19 @@ class MainScene extends Phaser.Scene {
     }
 
     try {
-      const tokenContract = new ethers.Contract(this.tokenAddress, this.erc20Abi, this.signer);
-      const balance = await tokenContract.balanceOf(this.walletAddress);
+      const balance = await this.provider.getBalance(this.walletAddress);
       console.log('Balance raw:', balance.toString());
 
       if (balance.lt(stakeAmount)) {
-        this.updateMessage('Insufficient WPHRS balance for stake.');
+        this.updateMessage('Insufficient PHRS balance for stake.');
         return false;
       }
 
       this.updateMessage('Sending stake payment...');
-      const tx = await tokenContract.transfer(this.depositAddress, stakeAmount);
+      const tx = await this.signer.sendTransaction({
+        to: this.depositAddress,
+        value: stakeAmount
+      });
       console.log('Transaction sent:', tx.hash);
       await tx.wait();
       this.updateMessage('Stake payment successful! Starting game...');
@@ -264,33 +261,7 @@ class MainScene extends Phaser.Scene {
     }
 
     try {
-      const tokenContract = new ethers.Contract(this.tokenAddress, this.erc20Abi, this.provider);
-      const balanceRaw = await tokenContract.balanceOf(this.walletAddress);
+      const balanceRaw = await this.provider.getBalance(this.walletAddress);
       console.log('Fetched raw balance:', balanceRaw.toString());
       const balance = ethers.utils.formatUnits(balanceRaw, 18);
-      this.balanceText.setText(`Balance: ${balance} WPHRS`);
-    } catch (error) {
-      console.error('Failed to fetch balance:', error);
-      this.balanceText.setText(`Balance: error - ${error.message}`);
-    }
-  }
-
-  updateMessage(text) {
-    this.messageText.setText(text || '');
-  }
-
-  handleWin() {
-    this.updateMessage('Congratulations! Contact admin to claim 0.01 WPHRS.');
-    this.physics.pause();
-    this.time.removeAllEvents();
-  }
-
-  handleLose() {
-    this.updateMessage('You lost! Try again.');
-    this.scene.restart();
-  }
-
-  spawnWave() {
-    const width = this.scale.width;
-    const height = this.scale.height;
-    const waveHeights = [150, 250,...
+      this.balanceText.setText(`Balance: ${balance} PHRS...
