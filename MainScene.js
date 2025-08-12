@@ -2,14 +2,15 @@ class MainScene extends Phaser.Scene {
   constructor() {
     super('MainScene');
     this.maxPlaysPerDay = 3;
-    this.playsKey = 'pharos_game_plays';
+    this.playsKey = 'wphrs_game_plays';
 
     // Для кошелька
     this.provider = null;
     this.signer = null;
     this.walletAddress = null;
 
-    this.tokenAddress = '0xdd051eab9b0b74de4f149975feb8b585c7ca037e';
+    // Адрес контракта WPHRS
+    this.tokenAddress = '0x3019B247381c850ab53Dc0EE53bCe7A07Ea9155f'; // Новый адрес WPHRS
     this.erc20Abi = [
       "function transfer(address to, uint amount) returns (bool)",
       "function balanceOf(address) view returns (uint)"
@@ -90,8 +91,8 @@ class MainScene extends Phaser.Scene {
         }
         const paid = await this.payStake();
         if (paid) {
-          await this.updateBalance();  // обновляем баланс после оплаты
-          this.scene.restart(); // Перезапускаем сцену, игра начинается
+          await this.updateBalance();
+          this.scene.restart();
         }
       });
 
@@ -148,7 +149,6 @@ class MainScene extends Phaser.Scene {
 
       await this.updateBalance();
 
-      // Следим за изменением сети
       window.ethereum.on('chainChanged', async (chainId) => {
         console.log('Chain changed:', chainId);
         if (chainId !== '0xa8230') {
@@ -172,7 +172,7 @@ class MainScene extends Phaser.Scene {
     try {
       await window.ethereum.request({
         method: 'wallet_switchEthereumChain',
-        params: [{ chainId: '0xa8230' }]  // Chain ID Pharos Testnet
+        params: [{ chainId: '0xa8230' }]  // Chain ID 688688
       });
     } catch (error) {
       if (error.code === 4902) {
@@ -183,12 +183,12 @@ class MainScene extends Phaser.Scene {
               chainId: '0xa8230',
               chainName: 'Pharos Testnet',
               nativeCurrency: {
-                name: 'Pharos',
-                symbol: 'PHAROS',
+                name: 'Wrapped PHRS', // Обновлено
+                symbol: 'WPHRS',     // Обновлено
                 decimals: 18
               },
-              rpcUrls: ['http://testnet.dplabs-internal.com'],
-              blockExplorerUrls: ['http://testnet.pharosscan.xyz']
+              rpcUrls: ['https://testnet.dplabs-internal.com'],
+              blockExplorerUrls: ['https://testnet.pharosscan.xyz']
             }]
           });
           // Пробуем переключиться снова
@@ -218,12 +218,12 @@ class MainScene extends Phaser.Scene {
     try {
       const tokenContract = new ethers.Contract(this.tokenAddress, this.erc20Abi, this.signer);
 
-      console.log('Checking token balance...');
+      console.log('Checking WPHRS balance...'); // Обновлено
       const balance = await tokenContract.balanceOf(this.walletAddress);
       console.log('Balance raw:', balance.toString());
 
       if (balance.lt(stakeAmount)) {
-        this.updatePlaysMessage('Insufficient token balance for stake.');
+        this.updatePlaysMessage('Insufficient WPHRS balance for stake.');
         return false;
       }
 
@@ -252,7 +252,7 @@ class MainScene extends Phaser.Scene {
       const balanceRaw = await tokenContract.balanceOf(this.walletAddress);
       console.log('Fetched raw balance:', balanceRaw.toString());
       const balance = ethers.utils.formatUnits(balanceRaw, 18);
-      this.balanceText.setText(`Balance: ${balance} Pharos`);
+      this.balanceText.setText(`Balance: ${balance} WPHRS`);
     } catch (error) {
       console.error('Failed to fetch balance:', error);
       this.balanceText.setText(`Balance: error - ${error.message}`);
@@ -308,7 +308,7 @@ class MainScene extends Phaser.Scene {
 
   handleWin() {
     this.incrementPlays();
-    this.updatePlaysMessage('Congratulations! You got 0.1 Pharos.');
+    this.updatePlaysMessage('Congratulations! You got 0.1 WPHRS.');
     this.physics.pause();
     this.time.removeAllEvents();
   }
