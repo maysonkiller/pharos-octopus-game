@@ -125,34 +125,45 @@ class MainScene extends Phaser.Scene {
   }
 
   async connectWallet() {
-    if (window.ethereum) {
-      try {
-        await window.ethereum.request({ method: 'eth_requestAccounts' });
-        await this.switchToPharos();
-
-        this.provider = new window.ethers.providers.Web3Provider(window.ethereum);
-        this.signer = this.provider.getSigner();
-        this.walletAddress = await this.signer.getAddress();
-        this.walletText.setText(`Wallet: ${this.walletAddress.slice(0, 6)}...${this.walletAddress.slice(-4)}`);
-        await this.updateBalance(); // обновляем баланс при подключении кошелька
-        console.log('Connected wallet:', this.walletAddress);
-
-        // Следим за изменением сети (например, если пользователь переключит вручную)
-        window.ethereum.on('chainChanged', async (chainId) => {
-          if (chainId !== '0xa8230') {  // если не Pharos, предлагаем переключиться
-            this.updatePlaysMessage('Please switch to Pharos Network.');
-          } else {
-            await this.updateBalance();
-            this.updatePlaysMessage();
-          }
-        });
-
-      } catch (error) {
-        console.error('User rejected wallet connection or network switch:', error);
-        this.updatePlaysMessage('Wallet connection or network switch failed.');
-      }
-    } else {
+    if (!window.ethereum) {
       alert('Please install MetaMask or another Ethereum wallet.');
+      return;
+    }
+
+    try {
+      console.log('Requesting wallet accounts...');
+      const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
+      console.log('Accounts:', accounts);
+      this.walletAddress = accounts[0];
+
+      await this.switchToPharos();
+
+      this.provider = new ethers.providers.Web3Provider(window.ethereum);
+      this.signer = this.provider.getSigner();
+      this.walletAddress = await this.signer.getAddress();
+      this.walletText.setText(`Wallet: ${this.walletAddress.slice(0, 6)}...${this.walletAddress.slice(-4)}`);
+
+      const network = await this.provider.getNetwork();
+      console.log('Connected to network:', network);
+
+      await this.updateBalance();
+
+      // Следим за изменением сети
+      window.ethereum.on('chainChanged', async (chainId) => {
+        console.log('Chain changed:', chainId);
+        if (chainId !== '0xa8230') {
+          this.updatePlaysMessage('Please switch to Pharos Network.');
+        } else {
+          await this.updateBalance();
+          this.updatePlaysMessage();
+        }
+      });
+
+      console.log('Wallet connected:', this.walletAddress);
+
+    } catch (error) {
+      console.error('Wallet connection or network switch error:', error);
+      this.updatePlaysMessage('Wallet connection or network switch failed.');
     }
   }
 
@@ -161,10 +172,9 @@ class MainScene extends Phaser.Scene {
     try {
       await window.ethereum.request({
         method: 'wallet_switchEthereumChain',
-        params: [{ chainId: '0xa8230' }]  // Chain ID Pharos Testnet в hex (688688 dec)
+        params: [{ chainId: '0xa8230' }]  // Chain ID Pharos Testnet
       });
     } catch (error) {
-      // Если сеть не добавлена в MetaMask, добавляем её
       if (error.code === 4902) {
         try {
           await window.ethereum.request({
@@ -181,7 +191,7 @@ class MainScene extends Phaser.Scene {
               blockExplorerUrls: ['http://testnet.pharosscan.xyz']
             }]
           });
-          // После добавления пробуем переключиться снова
+          // Пробуем переключиться снова
           await window.ethereum.request({
             method: 'wallet_switchEthereumChain',
             params: [{ chainId: '0xa8230' }]
@@ -198,7 +208,7 @@ class MainScene extends Phaser.Scene {
 
   async payStake() {
     const bankAddress = '0x6EC8C121043357aC231E36D403EdAbf90AE6989B';
-    const stakeAmount = ethers.utils.parseUnits('0.01', 18); // 0.01 токен
+    const stakeAmount = ethers.utils.parseUnits('0.01', 18);
 
     if (!this.signer) {
       this.updatePlaysMessage('Please connect your wallet first');
@@ -207,7 +217,11 @@ class MainScene extends Phaser.Scene {
 
     try {
       const tokenContract = new ethers.Contract(this.tokenAddress, this.erc20Abi, this.signer);
+
+      console.log('Checking token balance...');
       const balance = await tokenContract.balanceOf(this.walletAddress);
+      console.log('Balance raw:', balance.toString());
+
       if (balance.lt(stakeAmount)) {
         this.updatePlaysMessage('Insufficient token balance for stake.');
         return false;
@@ -215,18 +229,20 @@ class MainScene extends Phaser.Scene {
 
       this.updatePlaysMessage('Sending stake payment...');
       const tx = await tokenContract.transfer(bankAddress, stakeAmount);
+      console.log('Transaction sent:', tx.hash);
       await tx.wait();
       this.updatePlaysMessage('Stake payment successful! Starting game...');
       return true;
+
     } catch (err) {
-      console.error(err);
-      this.updatePlaysMessage('Stake payment failed: ' + err.message);
+      console.error('Stake payment failed:', err);
+      this.updatePlaysMessage('Stake payment failed: ' + (err.data?.message || err.message || err));
       return false;
     }
   }
 
   async updateBalance() {
-    if (!this.signer || !this.walletAddress) {
+    if (!this.provider || !this.walletAddress) {
       this.balanceText.setText('Balance: -');
       return;
     }
@@ -234,6 +250,7 @@ class MainScene extends Phaser.Scene {
     try {
       const tokenContract = new ethers.Contract(this.tokenAddress, this.erc20Abi, this.provider);
       const balanceRaw = await tokenContract.balanceOf(this.walletAddress);
+      console.log('Fetched raw balance:', balanceRaw.toString());
       const balance = ethers.utils.formatUnits(balanceRaw, 18);
       this.balanceText.setText(`Balance: ${balance} Pharos`);
     } catch (error) {
