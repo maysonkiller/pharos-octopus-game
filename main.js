@@ -1,24 +1,25 @@
-import Phaser from 'phaser';
-import MainScene from './MainScene.js';
+const config = {
+  type: Phaser.AUTO,
+  parent: 'game',
+  scale: {
+    mode: Phaser.Scale.FIT,
+    autoCenter: Phaser.Scale.CENTER_BOTH,
+    width: window.innerWidth,
+    height: window.innerHeight
+  },
+  canvasStyle: 'willReadFrequently: true',
+  physics: {
+    default: 'arcade',
+    arcade: {
+      gravity: { y: 0 },
+      debug: false
+    }
+  },
+  scene: MainScene
+};
 
-if (!window.gameInstance) {
-  const config = {
-    type: Phaser.AUTO,
-    width: 800,
-    height: 600,
-    parent: 'game-container',
-    backgroundColor: '#0b1220',
-    physics: {
-      default: 'arcade',
-      arcade: {
-        gravity: { y: 1000 },
-        debug: false
-      }
-    },
-    scene: [MainScene]
-  };
+const game = new Phaser.Game(config);
 
-  window.gameInstance = new Phaser.Game(config);
-} else {
-  console.log('Game instance already exists, skipping creation.');
-}
+window.addEventListener('resize', () => {
+  game.scale.resize(window.innerWidth, window.innerHeight);
+});
