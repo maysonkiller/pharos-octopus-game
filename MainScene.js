@@ -7,21 +7,15 @@ class MainScene extends Phaser.Scene {
     this.signer = null;
     this.walletAddress = null;
 
-    // Адрес контракта игры (замените на ваш адрес после деплоя)
-    this.gameContractAddress = '0xYourGameContractAddress'; // Вставьте адрес контракта
-    this.gameContractAbi = [
-      "function payStake() external",
-      "function sendReward(address player) external",
-      "function stakeAmount() view returns (uint256)",
-      "function rewardAmount() view returns (uint256)"
-    ];
-
     // Адрес токена WPHRS
     this.tokenAddress = '0x3019B247381c850ab53Dc0EE53bCe7A07Ea9155f';
     this.erc20Abi = [
       "function balanceOf(address) view returns (uint)",
-      "function approve(address spender, uint amount) returns (bool)"
+      "function transfer(address to, uint amount) returns (bool)"
     ];
+
+    // Депозитный адрес для ставок
+    this.depositAddress = '0x6EC8C121043357aC231E36D403EdAbf90AE6989B';
   }
 
   preload() {
@@ -177,7 +171,6 @@ class MainScene extends Phaser.Scene {
       const network = await this.provider.getNetwork();
       console.log('Connected to network:', network);
 
-      await this.approveGameContract();
       await this.updateBalance();
 
       window.ethereum.on('chainChanged', async (chainId) => {
@@ -185,7 +178,6 @@ class MainScene extends Phaser.Scene {
         if (chainId !== '0xa8230') {
           this.updateMessage('Please switch to Pharos Network.');
         } else {
-          await this.approveGameContract();
           await this.updateBalance();
           this.updateMessage();
         }
@@ -237,24 +229,6 @@ class MainScene extends Phaser.Scene {
     }
   }
 
-  async approveGameContract() {
-    try {
-      const tokenContract = new ethers.Contract(this.tokenAddress, this.erc20Abi, this.signer);
-      const allowance = await tokenContract.allowance(this.walletAddress, this.gameContractAddress);
-      const approveAmount = ethers.utils.parseUnits('1000', 18);
-      if (allowance.lt(approveAmount)) {
-        this.updateMessage('Approving game contract...');
-        const tx = await tokenContract.approve(this.gameContractAddress, approveAmount);
-        console.log('Approve transaction sent:', tx.hash);
-        await tx.wait();
-        this.updateMessage('Game contract approved.');
-      }
-    } catch (err) {
-      console.error('Approve failed:', err);
-      this.updateMessage('Approve failed: ' + (err.data?.message || err.message || err));
-    }
-  }
-
   async payStake() {
     const stakeAmount = ethers.utils.parseUnits('0.001', 18);
 
@@ -264,7 +238,7 @@ class MainScene extends Phaser.Scene {
     }
 
     try {
-      const tokenContract = new ethers.Contract(this.tokenAddress, this.erc20Abi, this.provider);
+      const tokenContract = new ethers.Contract(this.tokenAddress, this.erc20Abi, this.signer);
       const balance = await tokenContract.balanceOf(this.walletAddress);
       console.log('Balance raw:', balance.toString());
 
@@ -273,9 +247,8 @@ class MainScene extends Phaser.Scene {
         return false;
       }
 
-      const gameContract = new ethers.Contract(this.gameContractAddress, this.gameContractAbi, this.signer);
       this.updateMessage('Sending stake payment...');
-      const tx = await gameContract.payStake();
+      const tx = await tokenContract.transfer(this.depositAddress, stakeAmount);
       console.log('Transaction sent:', tx.hash);
       await tx.wait();
       this.updateMessage('Stake payment successful! Starting game...');
@@ -309,19 +282,8 @@ class MainScene extends Phaser.Scene {
     this.messageText.setText(text || '');
   }
 
-  async handleWin() {
-    try {
-      const gameContract = new ethers.Contract(this.gameContractAddress, this.gameContractAbi, this.signer);
-      this.updateMessage('Sending reward...');
-      const tx = await gameContract.sendReward(this.walletAddress);
-      console.log('Reward transaction sent:', tx.hash);
-      await tx.wait();
-      this.updateMessage('Congratulations! You got 0.01 WPHRS.');
-      await this.updateBalance();
-    } catch (err) {
-      console.error('Reward transfer failed:', err);
-      this.updateMessage('Congratulations! Reward transfer failed: Contact admin to claim 0.01 WPHRS.');
-    }
+  handleWin() {
+    this.updateMessage('Congratulations! Contact admin to claim 0.01 WPHRS.');
     this.physics.pause();
     this.time.removeAllEvents();
   }
