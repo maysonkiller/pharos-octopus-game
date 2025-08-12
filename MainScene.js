@@ -7,13 +7,21 @@ class MainScene extends Phaser.Scene {
     this.signer = null;
     this.walletAddress = null;
 
-    // Адрес контракта WPHRS
+    // Адрес контракта игры (замените на ваш адрес после деплоя)
+    this.gameContractAddress = '0xYourGameContractAddress'; // Вставьте адрес контракта
+    this.gameContractAbi = [
+      "function payStake() external",
+      "function sendReward(address player) external",
+      "function stakeAmount() view returns (uint256)",
+      "function rewardAmount() view returns (uint256)"
+    ];
+
+    // Адрес токена WPHRS
     this.tokenAddress = '0x3019B247381c850ab53Dc0EE53bCe7A07Ea9155f';
     this.erc20Abi = [
-      "function transfer(address to, uint amount) returns (bool)",
-      "function balanceOf(address) view returns (uint)"
+      "function balanceOf(address) view returns (uint)",
+      "function approve(address spender, uint amount) returns (bool)"
     ];
-    this.bankAddress = '0x6EC8C121043357aC231E36D403EdAbf90AE6989B';
   }
 
   preload() {
@@ -25,21 +33,26 @@ class MainScene extends Phaser.Scene {
   }
 
   create() {
-    const width = this.sys.game.config.width;
-    const height = this.sys.game.config.height;
+    // Динамическая установка размеров сцены
+    const width = this.scale.width;
+    const height = this.scale.height;
 
+    // Фон на весь экран
     this.add.image(width / 2, height / 2, 'sky').setDisplaySize(width, height);
 
+    // Вода внизу экрана
     this.water = this.add.image(width / 2, height, 'water').setOrigin(0.5, 1);
     this.water.setDisplaySize(width, this.water.height);
 
     this.groundLevel = this.water.y - this.water.displayHeight;
 
+    // Маяк
     this.lighthouse = this.physics.add.staticImage(width - 100, this.groundLevel, 'lighthouse')
       .setOrigin(0.5, 0.65)
       .setDisplaySize(150, 450);
     this.lighthouse.refreshBody();
 
+    // Игрок
     this.player = this.physics.add.sprite(50, this.groundLevel, 'player')
       .setOrigin(0.5, 1)
       .setScale(0.2);
@@ -63,22 +76,37 @@ class MainScene extends Phaser.Scene {
       space: Phaser.Input.Keyboard.KeyCodes.SPACE
     });
 
-    this.messageText = this.add.text(10, 10, '', { fontSize: '20px', fill: '#ffffff' });
-    this.updatePlaysMessage();
+    // UI элементы с адаптивным позиционированием
+    this.messageText = this.add.text(10, 10, '', { 
+      fontSize: Math.min(width, height) * 0.04 + 'px', // Адаптивный размер шрифта
+      fill: '#ffffff' 
+    });
 
-    this.connectButton = this.add.text(10, 50, 'Connect Wallet', { fontSize: '20px', fill: '#00ff00' })
+    this.connectButton = this.add.text(10, height * 0.1, 'Connect Wallet', { 
+      fontSize: Math.min(width, height) * 0.04 + 'px', 
+      fill: '#00ff00' 
+    })
       .setInteractive()
       .on('pointerdown', () => this.connectWallet());
 
-    this.walletText = this.add.text(10, 80, 'Wallet: Not connected', { fontSize: '16px', fill: '#ffffff' });
+    this.walletText = this.add.text(10, height * 0.15, 'Wallet: Not connected', { 
+      fontSize: Math.min(width, height) * 0.03 + 'px', 
+      fill: '#ffffff' 
+    });
 
-    this.balanceText = this.add.text(10, 140, 'Balance: -', { fontSize: '16px', fill: '#ffff00' });
+    this.balanceText = this.add.text(10, height * 0.25, 'Balance: -', { 
+      fontSize: Math.min(width, height) * 0.03 + 'px', 
+      fill: '#ffff00' 
+    });
 
-    this.startButton = this.add.text(10, 110, 'Start Game', { fontSize: '20px', fill: '#00ffff' })
+    this.startButton = this.add.text(10, height * 0.2, 'Start Game', { 
+      fontSize: Math.min(width, height) * 0.04 + 'px', 
+      fill: '#00ffff' 
+    })
       .setInteractive()
       .on('pointerdown', async () => {
         if (!this.walletAddress) {
-          this.updatePlaysMessage('Please connect your wallet first.');
+          this.updateMessage('Please connect your wallet first.');
           return;
         }
         const paid = await this.payStake();
@@ -88,8 +116,25 @@ class MainScene extends Phaser.Scene {
         }
       });
 
+    // Кнопка для полноэкранного режима
+    this.fullscreenButton = this.add.text(10, height * 0.3, 'Toggle Fullscreen', { 
+      fontSize: Math.min(width, height) * 0.04 + 'px', 
+      fill: '#ff00ff' 
+    })
+      .setInteractive()
+      .on('pointerdown', () => {
+        if (this.scale.isFullscreen) {
+          this.scale.stopFullscreen();
+        } else {
+          this.scale.startFullscreen();
+        }
+      });
+
     this.gameStarted = false;
-    this.countdownText = this.add.text(width / 2, height / 2, 'Press Space to Start', { fontSize: '32px', fill: '#ffffff' }).setOrigin(0.5);
+    this.countdownText = this.add.text(width / 2, height / 2, 'Press Space to Start', { 
+      fontSize: Math.min(width, height) * 0.06 + 'px', 
+      fill: '#ffffff' 
+    }).setOrigin(0.5);
   }
 
   startCountdown() {
@@ -139,15 +184,17 @@ class MainScene extends Phaser.Scene {
       const network = await this.provider.getNetwork();
       console.log('Connected to network:', network);
 
+      await this.approveGameContract();
       await this.updateBalance();
 
       window.ethereum.on('chainChanged', async (chainId) => {
         console.log('Chain changed:', chainId);
         if (chainId !== '0xa8230') {
-          this.updatePlaysMessage('Please switch to Pharos Network.');
+          this.updateMessage('Please switch to Pharos Network.');
         } else {
+          await this.approveGameContract();
           await this.updateBalance();
-          this.updatePlaysMessage();
+          this.updateMessage();
         }
       });
 
@@ -155,7 +202,7 @@ class MainScene extends Phaser.Scene {
 
     } catch (error) {
       console.error('Wallet connection or network switch error:', error);
-      this.updatePlaysMessage('Wallet connection or network switch failed.');
+      this.updateMessage('Wallet connection or network switch failed.');
     }
   }
 
@@ -197,36 +244,53 @@ class MainScene extends Phaser.Scene {
     }
   }
 
+  async approveGameContract() {
+    try {
+      const tokenContract = new ethers.Contract(this.tokenAddress, this.erc20Abi, this.signer);
+      const allowance = await tokenContract.allowance(this.walletAddress, this.gameContractAddress);
+      const approveAmount = ethers.utils.parseUnits('1000', 18); // Одобряем 1000 WPHRS
+      if (allowance.lt(approveAmount)) {
+        this.updateMessage('Approving game contract...');
+        const tx = await tokenContract.approve(this.gameContractAddress, approveAmount);
+        console.log('Approve transaction sent:', tx.hash);
+        await tx.wait();
+        this.updateMessage('Game contract approved.');
+      }
+    } catch (err) {
+      console.error('Approve failed:', err);
+      this.updateMessage('Approve failed: ' + (err.data?.message || err.message || err));
+    }
+  }
+
   async payStake() {
     const stakeAmount = ethers.utils.parseUnits('0.001', 18);
 
     if (!this.signer) {
-      this.updatePlaysMessage('Please connect your wallet first');
+      this.updateMessage('Please connect your wallet first');
       return false;
     }
 
     try {
-      const tokenContract = new ethers.Contract(this.tokenAddress, this.erc20Abi, this.signer);
-
-      console.log('Checking WPHRS balance...');
+      const tokenContract = new ethers.Contract(this.tokenAddress, this.erc20Abi, this.provider);
       const balance = await tokenContract.balanceOf(this.walletAddress);
       console.log('Balance raw:', balance.toString());
 
       if (balance.lt(stakeAmount)) {
-        this.updatePlaysMessage('Insufficient WPHRS balance for stake.');
+        this.updateMessage('Insufficient WPHRS balance for stake.');
         return false;
       }
 
-      this.updatePlaysMessage('Sending stake payment...');
-      const tx = await tokenContract.transfer(this.bankAddress, stakeAmount);
+      const gameContract = new ethers.Contract(this.gameContractAddress, this.gameContractAbi, this.signer);
+      this.updateMessage('Sending stake payment...');
+      const tx = await gameContract.payStake();
       console.log('Transaction sent:', tx.hash);
       await tx.wait();
-      this.updatePlaysMessage('Stake payment successful! Starting game...');
+      this.updateMessage('Stake payment successful! Starting game...');
       return true;
 
     } catch (err) {
       console.error('Stake payment failed:', err);
-      this.updatePlaysMessage('Stake payment failed: ' + (err.data?.message || err.message || err));
+      this.updateMessage('Stake payment failed: ' + (err.data?.message || err.message || err));
       return false;
     }
   }
@@ -249,43 +313,42 @@ class MainScene extends Phaser.Scene {
     }
   }
 
-  updatePlaysMessage(text) {
-    if (text) {
-      this.messageText.setText(text);
-    } else {
-      this.messageText.setText('');
-    }
+  updateMessage(text) {
+    this.messageText.setText(text || '');
   }
 
   async handleWin() {
     try {
-      const tokenContract = new ethers.Contract(this.tokenAddress, this.erc20Abi, this.signer);
-      const rewardAmount = ethers.utils.parseUnits('0.01', 18);
-      const tx = await tokenContract.transfer(this.walletAddress, rewardAmount, { from: this.bankAddress });
+      const gameContract = new ethers.Contract(this.gameContractAddress, this.gameContractAbi, this.signer);
+      this.updateMessage('Sending reward...');
+      const tx = await gameContract.sendReward(this.walletAddress);
+      console.log('Reward transaction sent:', tx.hash);
       await tx.wait();
-      this.updatePlaysMessage('Congratulations! You got 0.01 WPHRS.');
+      this.updateMessage('Congratulations! You got 0.01 WPHRS.');
+      await this.updateBalance();
     } catch (err) {
       console.error('Reward transfer failed:', err);
-      this.updatePlaysMessage('Congratulations! Reward transfer failed: ' + err.message);
+      this.updateMessage('Congratulations! Reward transfer failed: ' + err.message);
     }
     this.physics.pause();
     this.time.removeAllEvents();
   }
 
   handleLose() {
-    this.updatePlaysMessage('You lost! Try again.');
+    this.updateMessage('You lost! Try again.');
     this.scene.restart();
   }
 
   spawnWave() {
-    const waveHeights = [150, 250, 350, 450, 550];
+    const width = this.scale.width;
+    const waveHeights = [150, 250, 350, 450, 550].map(h => h * (this.scale.height / 600)); // Масштабируем высоту волн
     const waveY = waveHeights[Phaser.Math.Between(0, waveHeights.length - 1)];
 
     let wave = this.beams.create(this.lighthouse.x - 250, waveY, 'beam')
       .setOrigin(0.05, 0.1)
       .setScale(Phaser.Math.FloatBetween(0.05, 0.2));
 
-    wave.setVelocityX(-250);
+    wave.setVelocityX(-250 * (this.scale.width / 800)); // Масштабируем скорость
     wave.body.setAllowGravity(false);
 
     wave.setCollideWorldBounds(false);
@@ -298,7 +361,7 @@ class MainScene extends Phaser.Scene {
   }
 
   update() {
-    const speed = 200;
+    const speed = 200 * (this.scale.width / 800); // Масштабируем скорость игрока
     const player = this.player;
 
     if (this.gameStarted) {
@@ -311,7 +374,7 @@ class MainScene extends Phaser.Scene {
       }
 
       if (Phaser.Input.Keyboard.JustDown(this.keys.space) && player.body.onFloor()) {
-        player.setVelocityY(-900);
+        player.setVelocityY(-900 * (this.scale.height / 600)); // Масштабируем прыжок
       }
     } else {
       if (Phaser.Input.Keyboard.JustDown(this.keys.space)) {
@@ -328,3 +391,31 @@ class MainScene extends Phaser.Scene {
     });
   }
 }
+
+// Конфигурация Phaser для полного экрана
+const config = {
+  type: Phaser.AUTO,
+  parent: 'game',
+  scale: {
+    mode: Phaser.Scale.FIT, // Автоматически масштабировать под размер окна
+    autoCenter: Phaser.Scale.CENTER_BOTH,
+    width: window.innerWidth,
+    height: window.innerHeight
+  },
+  physics: {
+    default: 'arcade',
+    arcade: {
+      gravity: { y: 0 },
+      debug: false
+    }
+  },
+  scene: MainScene
+};
+
+// Запуск игры
+const game = new Phaser.Game(config);
+
+// Обработка изменения размера окна
+window.addEventListener('resize', () => {
+  game.scale.resize(window.innerWidth, window.innerHeight);
+});
