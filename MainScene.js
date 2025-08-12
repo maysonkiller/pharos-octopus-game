@@ -1,8 +1,6 @@
 class MainScene extends Phaser.Scene {
   constructor() {
     super('MainScene');
-    this.maxPlaysPerDay = 3;
-    this.playsKey = 'wphrs_game_plays';
 
     // Для кошелька
     this.provider = null;
@@ -10,11 +8,12 @@ class MainScene extends Phaser.Scene {
     this.walletAddress = null;
 
     // Адрес контракта WPHRS
-    this.tokenAddress = '0x3019B247381c850ab53Dc0EE53bCe7A07Ea9155f'; // Новый адрес WPHRS
+    this.tokenAddress = '0x3019B247381c850ab53Dc0EE53bCe7A07Ea9155f';
     this.erc20Abi = [
       "function transfer(address to, uint amount) returns (bool)",
       "function balanceOf(address) view returns (uint)"
     ];
+    this.bankAddress = '0x6EC8C121043357aC231E36D403EdAbf90AE6989B';
   }
 
   preload() {
@@ -22,7 +21,7 @@ class MainScene extends Phaser.Scene {
     this.load.image('water', 'assets/water.png');
     this.load.image('player', 'assets/sticker.webp');
     this.load.image('lighthouse', 'assets/lighthouse.png');
-    this.load.image('beam', 'assets/beam.webp'); // волны
+    this.load.image('beam', 'assets/beam.webp');
   }
 
   create() {
@@ -64,7 +63,6 @@ class MainScene extends Phaser.Scene {
       space: Phaser.Input.Keyboard.KeyCodes.SPACE
     });
 
-    this.plays = this.loadPlays();
     this.messageText = this.add.text(10, 10, '', { fontSize: '20px', fill: '#ffffff' });
     this.updatePlaysMessage();
 
@@ -74,17 +72,11 @@ class MainScene extends Phaser.Scene {
 
     this.walletText = this.add.text(10, 80, 'Wallet: Not connected', { fontSize: '16px', fill: '#ffffff' });
 
-    // Текст баланса токенов
     this.balanceText = this.add.text(10, 140, 'Balance: -', { fontSize: '16px', fill: '#ffff00' });
 
-    // Кнопка Start Game
     this.startButton = this.add.text(10, 110, 'Start Game', { fontSize: '20px', fill: '#00ffff' })
       .setInteractive()
       .on('pointerdown', async () => {
-        if (this.plays >= this.maxPlaysPerDay) {
-          this.updatePlaysMessage('No plays left today.');
-          return;
-        }
         if (!this.walletAddress) {
           this.updatePlaysMessage('Please connect your wallet first.');
           return;
@@ -172,7 +164,7 @@ class MainScene extends Phaser.Scene {
     try {
       await window.ethereum.request({
         method: 'wallet_switchEthereumChain',
-        params: [{ chainId: '0xa8230' }]  // Chain ID 688688
+        params: [{ chainId: '0xa8230' }]
       });
     } catch (error) {
       if (error.code === 4902) {
@@ -183,15 +175,14 @@ class MainScene extends Phaser.Scene {
               chainId: '0xa8230',
               chainName: 'Pharos Testnet',
               nativeCurrency: {
-                name: 'Wrapped PHRS', // Обновлено
-                symbol: 'WPHRS',     // Обновлено
+                name: 'Wrapped PHRS',
+                symbol: 'WPHRS',
                 decimals: 18
               },
               rpcUrls: ['https://testnet.dplabs-internal.com'],
               blockExplorerUrls: ['https://testnet.pharosscan.xyz']
             }]
           });
-          // Пробуем переключиться снова
           await window.ethereum.request({
             method: 'wallet_switchEthereumChain',
             params: [{ chainId: '0xa8230' }]
@@ -207,8 +198,7 @@ class MainScene extends Phaser.Scene {
   }
 
   async payStake() {
-    const bankAddress = '0x6EC8C121043357aC231E36D403EdAbf90AE6989B';
-    const stakeAmount = ethers.utils.parseUnits('0.01', 18);
+    const stakeAmount = ethers.utils.parseUnits('0.001', 18);
 
     if (!this.signer) {
       this.updatePlaysMessage('Please connect your wallet first');
@@ -218,7 +208,7 @@ class MainScene extends Phaser.Scene {
     try {
       const tokenContract = new ethers.Contract(this.tokenAddress, this.erc20Abi, this.signer);
 
-      console.log('Checking WPHRS balance...'); // Обновлено
+      console.log('Checking WPHRS balance...');
       const balance = await tokenContract.balanceOf(this.walletAddress);
       console.log('Balance raw:', balance.toString());
 
@@ -228,7 +218,7 @@ class MainScene extends Phaser.Scene {
       }
 
       this.updatePlaysMessage('Sending stake payment...');
-      const tx = await tokenContract.transfer(bankAddress, stakeAmount);
+      const tx = await tokenContract.transfer(this.bankAddress, stakeAmount);
       console.log('Transaction sent:', tx.hash);
       await tx.wait();
       this.updatePlaysMessage('Stake payment successful! Starting game...');
@@ -259,58 +249,32 @@ class MainScene extends Phaser.Scene {
     }
   }
 
-  loadPlays() {
-    const saved = localStorage.getItem(this.playsKey);
-    if (!saved) {
-      localStorage.setItem(this.playsKey, JSON.stringify({ date: this.getToday(), count: 0 }));
-      return 0;
-    }
-    const data = JSON.parse(saved);
-    if (data.date !== this.getToday()) {
-      localStorage.setItem(this.playsKey, JSON.stringify({ date: this.getToday(), count: 0 }));
-      return 0;
-    }
-    return data.count;
-  }
-
-  incrementPlays() {
-    let data = JSON.parse(localStorage.getItem(this.playsKey));
-    data.count++;
-    localStorage.setItem(this.playsKey, JSON.stringify(data));
-    this.plays = data.count;
-  }
-
-  getToday() {
-    const d = new Date();
-    return d.getFullYear() + '-' + (d.getMonth() + 1) + '-' + d.getDate();
-  }
-
   updatePlaysMessage(text) {
     if (text) {
       this.messageText.setText(text);
     } else {
-      const left = this.maxPlaysPerDay - this.plays;
-      this.messageText.setText(`Plays left today: ${left}`);
+      this.messageText.setText('');
     }
+  }
+
+  async handleWin() {
+    try {
+      const tokenContract = new ethers.Contract(this.tokenAddress, this.erc20Abi, this.signer);
+      const rewardAmount = ethers.utils.parseUnits('0.01', 18);
+      const tx = await tokenContract.transfer(this.walletAddress, rewardAmount, { from: this.bankAddress });
+      await tx.wait();
+      this.updatePlaysMessage('Congratulations! You got 0.01 WPHRS.');
+    } catch (err) {
+      console.error('Reward transfer failed:', err);
+      this.updatePlaysMessage('Congratulations! Reward transfer failed: ' + err.message);
+    }
+    this.physics.pause();
+    this.time.removeAllEvents();
   }
 
   handleLose() {
-    this.incrementPlays();
-    if (this.plays >= this.maxPlaysPerDay) {
-      this.updatePlaysMessage('No plays left today. Please come back tomorrow.');
-      this.physics.pause();
-      this.time.removeAllEvents();
-      return;
-    }
     this.updatePlaysMessage('You lost! Try again.');
     this.scene.restart();
-  }
-
-  handleWin() {
-    this.incrementPlays();
-    this.updatePlaysMessage('Congratulations! You got 0.1 WPHRS.');
-    this.physics.pause();
-    this.time.removeAllEvents();
   }
 
   spawnWave() {
