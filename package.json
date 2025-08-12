@@ -1,7 +1,7 @@
 {
   "name": "pharos-game",
   "version": "1.0.0",
-  "description": "",
+  "description": "Pharos Octopus Jump is a dynamic arcade game featuring a jumping octopus who must avoid waves coming from the lighthouse and reach the lighthouse to earn Pharos tokens.",
   "main": "index.js",
   "scripts": {
     "dev": "vite"
@@ -11,7 +11,17 @@
   "license": "ISC",
   "type": "commonjs",
   "dependencies": {
+    "ethers": "^6.15.0",
     "phaser": "^3.90.0",
     "vite": "^7.1.2"
-  }
+  },
+  "devDependencies": {},
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/maysonkiller/pharos-octopus-game.git"
+  },
+  "bugs": {
+    "url": "https://github.com/maysonkiller/pharos-octopus-game/issues"
+  },
+  "homepage": "https://github.com/maysonkiller/pharos-octopus-game#readme"
 }
