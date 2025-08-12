@@ -33,31 +33,26 @@ class MainScene extends Phaser.Scene {
   }
 
   create() {
-    // Динамическая установка размеров сцены
     const width = this.scale.width;
     const height = this.scale.height;
 
-    // Фон на весь экран
     this.add.image(width / 2, height / 2, 'sky').setDisplaySize(width, height);
 
-    // Вода внизу экрана
     this.water = this.add.image(width / 2, height, 'water').setOrigin(0.5, 1);
     this.water.setDisplaySize(width, this.water.height);
 
     this.groundLevel = this.water.y - this.water.displayHeight;
 
-    // Маяк
-    this.lighthouse = this.physics.add.staticImage(width - 100, this.groundLevel, 'lighthouse')
+    this.lighthouse = this.physics.add.staticImage(width - 100 * (width / 800), this.groundLevel, 'lighthouse')
       .setOrigin(0.5, 0.65)
-      .setDisplaySize(150, 450);
+      .setDisplaySize(150 * (width / 800), 450 * (height / 600));
     this.lighthouse.refreshBody();
 
-    // Игрок
-    this.player = this.physics.add.sprite(50, this.groundLevel, 'player')
+    this.player = this.physics.add.sprite(50 * (width / 800), this.groundLevel, 'player')
       .setOrigin(0.5, 1)
-      .setScale(0.2);
+      .setScale(0.2 * Math.min(width / 800, height / 600));
     this.player.setCollideWorldBounds(true);
-    this.player.body.setGravityY(900);
+    this.player.body.setGravityY(900 * (height / 600));
 
     this.beams = this.physics.add.group();
 
@@ -76,9 +71,8 @@ class MainScene extends Phaser.Scene {
       space: Phaser.Input.Keyboard.KeyCodes.SPACE
     });
 
-    // UI элементы с адаптивным позиционированием
     this.messageText = this.add.text(10, 10, '', { 
-      fontSize: Math.min(width, height) * 0.04 + 'px', // Адаптивный размер шрифта
+      fontSize: Math.min(width, height) * 0.04 + 'px', 
       fill: '#ffffff' 
     });
 
@@ -116,7 +110,6 @@ class MainScene extends Phaser.Scene {
         }
       });
 
-    // Кнопка для полноэкранного режима
     this.fullscreenButton = this.add.text(10, height * 0.3, 'Toggle Fullscreen', { 
       fontSize: Math.min(width, height) * 0.04 + 'px', 
       fill: '#ff00ff' 
@@ -248,7 +241,7 @@ class MainScene extends Phaser.Scene {
     try {
       const tokenContract = new ethers.Contract(this.tokenAddress, this.erc20Abi, this.signer);
       const allowance = await tokenContract.allowance(this.walletAddress, this.gameContractAddress);
-      const approveAmount = ethers.utils.parseUnits('1000', 18); // Одобряем 1000 WPHRS
+      const approveAmount = ethers.utils.parseUnits('1000', 18);
       if (allowance.lt(approveAmount)) {
         this.updateMessage('Approving game contract...');
         const tx = await tokenContract.approve(this.gameContractAddress, approveAmount);
@@ -287,7 +280,6 @@ class MainScene extends Phaser.Scene {
       await tx.wait();
       this.updateMessage('Stake payment successful! Starting game...');
       return true;
-
     } catch (err) {
       console.error('Stake payment failed:', err);
       this.updateMessage('Stake payment failed: ' + (err.data?.message || err.message || err));
@@ -328,7 +320,7 @@ class MainScene extends Phaser.Scene {
       await this.updateBalance();
     } catch (err) {
       console.error('Reward transfer failed:', err);
-      this.updateMessage('Congratulations! Reward transfer failed: ' + err.message);
+      this.updateMessage('Congratulations! Reward transfer failed: Contact admin to claim 0.01 WPHRS.');
     }
     this.physics.pause();
     this.time.removeAllEvents();
@@ -341,14 +333,15 @@ class MainScene extends Phaser.Scene {
 
   spawnWave() {
     const width = this.scale.width;
-    const waveHeights = [150, 250, 350, 450, 550].map(h => h * (this.scale.height / 600)); // Масштабируем высоту волн
+    const height = this.scale.height;
+    const waveHeights = [150, 250, 350, 450, 550].map(h => h * (height / 600));
     const waveY = waveHeights[Phaser.Math.Between(0, waveHeights.length - 1)];
 
-    let wave = this.beams.create(this.lighthouse.x - 250, waveY, 'beam')
+    let wave = this.beams.create(this.lighthouse.x - 250 * (width / 800), waveY, 'beam')
       .setOrigin(0.05, 0.1)
-      .setScale(Phaser.Math.FloatBetween(0.05, 0.2));
+      .setScale(Phaser.Math.FloatBetween(0.05, 0.2) * Math.min(width / 800, height / 600));
 
-    wave.setVelocityX(-250 * (this.scale.width / 800)); // Масштабируем скорость
+    wave.setVelocityX(-250 * (width / 800));
     wave.body.setAllowGravity(false);
 
     wave.setCollideWorldBounds(false);
@@ -361,7 +354,7 @@ class MainScene extends Phaser.Scene {
   }
 
   update() {
-    const speed = 200 * (this.scale.width / 800); // Масштабируем скорость игрока
+    const speed = 200 * (this.scale.width / 800);
     const player = this.player;
 
     if (this.gameStarted) {
@@ -374,7 +367,7 @@ class MainScene extends Phaser.Scene {
       }
 
       if (Phaser.Input.Keyboard.JustDown(this.keys.space) && player.body.onFloor()) {
-        player.setVelocityY(-900 * (this.scale.height / 600)); // Масштабируем прыжок
+        player.setVelocityY(-900 * (this.scale.height / 600));
       }
     } else {
       if (Phaser.Input.Keyboard.JustDown(this.keys.space)) {
@@ -392,12 +385,11 @@ class MainScene extends Phaser.Scene {
   }
 }
 
-// Конфигурация Phaser для полного экрана
 const config = {
   type: Phaser.AUTO,
   parent: 'game',
   scale: {
-    mode: Phaser.Scale.FIT, // Автоматически масштабировать под размер окна
+    mode: Phaser.Scale.FIT,
     autoCenter: Phaser.Scale.CENTER_BOTH,
     width: window.innerWidth,
     height: window.innerHeight
@@ -412,10 +404,8 @@ const config = {
   scene: MainScene
 };
 
-// Запуск игры
 const game = new Phaser.Game(config);
 
-// Обработка изменения размера окна
 window.addEventListener('resize', () => {
   game.scale.resize(window.innerWidth, window.innerHeight);
 });
